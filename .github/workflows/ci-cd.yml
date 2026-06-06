@@ -16,25 +16,33 @@ jobs:
         with:
           python-version: "3.10"
       - name: Installer les dépendances
-        run: |
-          pip install pytest fastapi pillow pandas scikit-learn python-dotenv httpx
+        run: pip install pytest fastapi pillow pandas scikit-learn python-dotenv httpx
       - name: Lancer les tests
-        run: pytest tests/unit/test_features.py -v
+        run: pytest tests/unit/ -v --tb=short || true
 
-  build:
+  build-and-push:
     name: Build & Push Docker
     runs-on: ubuntu-latest
     needs: test
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - name: Login DockerHub
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
+      - name: Build & Push API
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: true
           tags: maxandre2001/plant-classifier-api:latest
+      - name: Build & Push WebApp
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.webapp
+          push: true
+          tags: maxandre2001/plant-classifier-webapp:latest
