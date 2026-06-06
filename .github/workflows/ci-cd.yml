@@ -1,0 +1,97 @@
+name: CI/CD Pipeline — Plant Classifier
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/plant-classifier-api
+  DOCKER_IMAGE_WEBAPP: ${{ secrets.DOCKERHUB_USERNAME }}/plant-classifier-webapp
+
+jobs:
+  # ── 1. Tests ─────────────────────────────────────────────
+  test:
+    name: Tests unitaires & intégration
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Installer les dépendances de test
+        run: |
+          pip install pytest pytest-asyncio httpx fastapi pillow pandas \
+                      scikit-learn python-dotenv evidently
+
+      - name: Lancer les tests unitaires
+        run: pytest tests/unit/ -v --tb=short
+
+      - name: Lancer les tests d'intégration
+        run: pytest tests/integration/ -v --tb=short
+
+  # ── 2. Build & Push Docker ───────────────────────────────
+  build-and-push:
+    name: Build & Push Docker images
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & Push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE }}:latest
+            ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+
+      - name: Build & Push WebApp image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.webapp
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE_WEBAPP }}:latest
+            ${{ env.DOCKER_IMAGE_WEBAPP }}:${{ github.sha }}
+
+  # ── 3. Deploy (self-hosted runner local) ─────────────────
+  deploy:
+    name: Déploiement local (Docker Compose)
+    runs-on: self-hosted
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copier le .env de production
+        run: cp ${{ secrets.ENV_FILE_PATH }} .env
+
+      - name: Déployer avec Docker Compose
+        run: |
+          docker compose pull api webapp
+          docker compose up -d --no-deps api webapp
+          echo "✅ Déploiement terminé"
+
+      - name: Vérification santé de l'API
+        run: |
+          sleep 10
+          curl -f http://localhost:8000/health || exit 1
+          echo "✅ API opérationnelle"

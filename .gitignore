@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Env
+.env
+*.env
+
+# Modèles / données locales
+models/*.pkl
+monitoring/reports/
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/

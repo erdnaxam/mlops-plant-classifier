@@ -1,0 +1,87 @@
+---
+# Deployment de l'API FastAPI
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plant-classifier-api
+  labels:
+    app: plant-classifier-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: plant-classifier-api
+  template:
+    metadata:
+      labels:
+        app: plant-classifier-api
+    spec:
+      containers:
+        - name: api
+          image: YOUR_DOCKERHUB_USERNAME/plant-classifier-api:IMAGE_TAG
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow-service:5000"
+            - name: MINIO_ENDPOINT
+              value: "http://minio-service:9000"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: secret-key
+            - name: MODEL_NAME
+              value: "plant-classifier"
+            - name: MODEL_STAGE
+              value: "Production"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+
+---
+# Service (LoadBalancer)
+apiVersion: v1
+kind: Service
+metadata:
+  name: plant-classifier-api-service
+spec:
+  selector:
+    app: plant-classifier-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: LoadBalancer
+
+---
+# Secret pour MinIO
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-secret
+type: Opaque
+stringData:
+  access-key: minioadmin
+  secret-key: minioadmin
